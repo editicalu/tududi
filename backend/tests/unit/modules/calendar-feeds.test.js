@@ -393,6 +393,75 @@ describe('eventsForRange on a long-lived feed', () => {
         );
         expect(range.map((e) => e.uid)).toEqual(['now']);
     });
+
+    it('relates a moved instance only to its own series', () => {
+        const events = feed(
+            series(
+                'standup',
+                'DTSTART;TZID=Europe/Athens:20200106T100000',
+                'DTEND;TZID=Europe/Athens:20200106T103000',
+                'RRULE:FREQ=WEEKLY;BYDAY=MO'
+            ),
+            series(
+                'review',
+                'DTSTART;TZID=Europe/Athens:20200106T100000',
+                'DTEND;TZID=Europe/Athens:20200106T110000',
+                'RRULE:FREQ=WEEKLY;BYDAY=MO'
+            ),
+            [
+                'UID:review',
+                'SUMMARY:review moved',
+                'RECURRENCE-ID;TZID=Europe/Athens:20261109T100000',
+                'DTSTART;TZID=Europe/Athens:20261109T150000',
+                'DTEND;TZID=Europe/Athens:20261109T160000',
+            ]
+        );
+        const byUid = Object.fromEntries(events.map((e) => [e.uid, e]));
+        expect(Object.keys(byUid.standup.exceptions)).toHaveLength(0);
+        expect(Object.keys(byUid.review.exceptions)).toHaveLength(1);
+
+        const range = eventsForRange(
+            events,
+            '2026-11-09',
+            '2026-11-09',
+            'Europe/Athens'
+        );
+        expect(range.map((e) => [e.uid, e.title, e.start_minute])).toEqual([
+            ['standup', 'standup', 600],
+            ['review', 'review moved', 900],
+        ]);
+    });
+
+    it('parses a feed with many moved instances without relating them all', () => {
+        // Every series used to get a copy of every moved instance in the
+        // feed, so memory grew with series x moved instances (#2077 follow-up).
+        const masters = Array.from({ length: 300 }, (_, i) =>
+            series(
+                `s${i}`,
+                'DTSTART:20200106T100000Z',
+                'DTEND:20200106T110000Z',
+                'RRULE:FREQ=WEEKLY'
+            )
+        );
+        // Each series moves a different week, so the ids do not collapse.
+        const week = (i) =>
+            new Date(Date.UTC(2020, 0, 6 + 7 * i))
+                .toISOString()
+                .slice(0, 10)
+                .replace(/-/g, '');
+        const moved = Array.from({ length: 300 }, (_, i) => [
+            `UID:s${i}`,
+            `SUMMARY:s${i} moved`,
+            `RECURRENCE-ID:${week(i)}T100000Z`,
+            `DTSTART:${week(i)}T150000Z`,
+            `DTEND:${week(i)}T160000Z`,
+        ]);
+        const events = feed(...masters, ...moved);
+        expect(events).toHaveLength(300);
+        for (const event of events) {
+            expect(Object.keys(event.exceptions)).toHaveLength(1);
+        }
+    });
 });
 
 describe('DST change days', () => {

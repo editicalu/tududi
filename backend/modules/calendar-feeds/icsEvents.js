@@ -24,7 +24,11 @@ function parseCalendar(text) {
     const masters = new Map();
     const exceptions = [];
     for (const vevent of root.getAllSubcomponents('vevent')) {
-        const event = new ICAL.Event(vevent);
+        // Without `exceptions`, ical.js relates every RECURRENCE-ID event in
+        // the calendar to this one, whatever its UID: series x moved
+        // instances objects, and other series' moves showing up here.
+        // Moved instances are related by UID below instead.
+        const event = new ICAL.Event(vevent, { exceptions: [] });
         if (!event.uid) continue;
         if (event.isRecurrenceException()) {
             exceptions.push(event);
